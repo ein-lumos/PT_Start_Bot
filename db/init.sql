@@ -1,0 +1,15 @@
+CREATE USER ${DB_REPL_USER} WITH REPLICATION ENCRYPTED PASSWORD '${DB_REPL_PASSWORD}';
+SELECT pg_create_physical_replication_slot('replication_slot');
+
+CREATE DATABASE ${DB_DATABASE};
+\c ${DB_DATABASE};
+
+CREATE TABLE phonenumbers (
+    id SERIAL PRIMARY KEY,
+    number VARCHAR(30) NOT NULL
+);
+
+CREATE TABLE emails (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(100) NOT NULL
+);
