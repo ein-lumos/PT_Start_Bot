@@ -1,0 +1,185 @@
+- hosts: bot
+  become: yes
+  vars_files:
+    - env.yml
+  vars:
+    ansible_become_password: "{{ ansible_password }}"
+  tasks:
+    - name: "Cloning Bot" 
+      git:
+        repo: https://github.com/ein-lumos/PT_Start_Bot.git
+        version: docker
+        dest: /tmp/bot
+        force: yes
+    - name: "Getting apt"    
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - libpq-dev
+    - name: "PIP"
+      pip:
+        requirements: /tmp/bot/bot/requirements.txt
+
+- hosts: db
+  become: yes
+  vars_files:
+    - env.yml
+  vars:
+    ansible_become_password: "{{ ansible_password }}"
+    allow_world_readable_tmpfiles: true
+  tasks:
+    - name: "Getting apt"
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+    - name: "Check if postgresql is installed" 
+      apt:
+        name: postgresql
+        state: present
+    - name: "Check if postgresql is started"
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+    - name: "Copying postgresql.conf"
+      copy:
+        src: config-postgresql 
+        dest: /etc/postgresql/14/main/postgresql.conf
+        owner: postgres
+        group: postgres
+        mode: 0700 
+    - name: "Copying pg_hba.conf"
+      copy:
+        src: pg_hba.conf
+        dest: /etc/postgresql/14/main/pg_hba.conf
+        owner: postgres
+        group: postgres
+        mode: 0644
+    - name: "Changing hba (rm)"
+      ansible.builtin.lineinfile:
+        line: "host all all {{ hostvars['bot'].ansible_host }}/24 password"
+        path: /etc/postgresql/14/main/pg_hba.conf
+    - name: "Changing hba (repl)"
+      ansible.builtin.lineinfile:
+        line: "host replication {{ DB_REPL_USER  }} {{ DB_REPL_HOST }}/24 scram-sha-256"
+        path: /etc/postgresql/14/main/pg_hba.conf
+    - name: Configure PostgreSQL to listen on a new port
+      lineinfile:
+        path: /etc/postgresql/14/main/postgresql.conf
+        regexp: '^#?port ='
+        line: "port = {{ DB_PORT }}"
+        state: present
+    - name: "Restart PostgreSQL"
+      service:
+        name: postgresql
+        state: stopped
+    - name: "Restart PostgreSQL"
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+    - name: "Creating DB user"
+      become: yes
+      become_user: postgres
+      postgresql_user:
+        name: "{{ DB_USER }}"
+        password: "{{ DB_PASSWORD }}"
+        login_password: "{{ DB_PASSWORD }}"
+        state: present
+    - name: "Creating DB"
+      become: yes
+      become_user: postgres
+      postgresql_db:
+        name: "{{ DB_DATABASE }}"
+        login_password: "{{ DB_PASSWORD }}"
+        state: present
+    - name: "Table phonenumbers"
+      become: yes
+      become_user: postgres
+      postgresql_table:
+        table: "phonenumbers"
+        login_password: "{{ DB_PASSWORD }}"
+        db: "{{ DB_DATABASE }}"
+        columns:
+        - ID SERIAL PRIMARY KEY
+        - number VARCHAR(30) NOT NULL
+    - name: "Table emails"
+      become: yes
+      become_user: postgres
+      postgresql_table:
+        table: "emails"
+        login_password: "{{ DB_PASSWORD }}"
+        db: "{{ DB_DATABASE }}"
+        columns:
+        - ID SERIAL PRIMARY KEY
+        - email VARCHAR(100) NOT NULL
+    - name: "Creating replication user"
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{ DB_DATABASE }}"
+        login_password: "{{ DB_PASSWORD }}"
+        query: "CREATE USER {{ DB_REPL_USER }} REPLICATION ENCRYPTED PASSWORD '{{ DB_REPL_PASSWORD }}';"
+    - name: "Creating replication slot"
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{ DB_DATABASE }}"
+        login_password: "{{ DB_PASSWORD }}"
+        query: "SELECT pg_create_physical_replication_slot('replication_slot');"
+
+- hosts: db_repl
+  become: yes
+  vars_files:
+    - env.yml
+  vars:
+    ansible_become_password: "{{ ansible_password }}" 
+    allow_world_readable_tmpfiles: true
+  tasks:
+    - name: "Getting apt"
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+    - name: "Check if postgresql is installed"
+      apt:
+        name: postgresql
+        state: present
+    - name: "Check if postgresql is started"
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+    - name: "Clearing data directory"
+      become: true
+      become_method: sudo
+      command: rm -rf /var/lib/postgresql/14/main/
+    - name: "Starting replication"
+      become: true
+      become_method: sudo
+      command: pg_basebackup --pgdata=/var/lib/postgresql/14/main/ -R --slot=replication_slot --host="{{ DB_HOST }}" --port="{{ DB_PORT }}" --username="{{ DB_REPL_USER }}"
+      environment:
+        PGPASSWORD: "{{ DB_REPL_PASSWORD }}"    
+
+- hosts: bot
+  become: yes
+  vars_files:
+    - env.yml
+  vars:
+    ansible_become_password: "{{ ansible_password }}"
+  tasks:
+    - name: "Starting Bot"
+      environment:
+        TOKEN: "{{ TOKEN }}"
+        DB_DATABASE: "{{ DB_DATABASE }}"
+        DB_HOST: localhost
+        DB_PORT: "{{ DB_PORT }}"
+        DB_USER: "{{ DB_USER }}"
+        DB_PASSWORD: "{{ DB_PASSWORD }}"
+        RM_HOST: "{{ RM_HOST }}"
+        RM_PORT: "{{ RM_PORT }}"
+        RM_USER: "{{ RM_USER }}"
+        RM_PASSWORD: "{{ RM_PASSWORD }}"
+      command: python3 /tmp/bot/bot/bot.py

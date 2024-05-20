@@ -1,0 +1,6 @@
+bot ansible_host="{{ RM_HOST }}" ansible_user=ansible ansible_password=ansible
+
+db ansible_host="{{ DB_HOST }}" ansible_user=ansible ansible_password=ansible
+
+db_repl ansible_host="{{ DB_REPL_HOST }}" ansible_user=ansible ansible_password=ansible
+
