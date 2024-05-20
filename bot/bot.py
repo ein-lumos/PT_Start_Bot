@@ -27,9 +27,6 @@ def start(update: Update, context):
     update.message.reply_text(f'Привет, {user.full_name}!')
     logging.info(f'Начата работа с пользователем {user.username}')
 
-def helpCommand(update: Update, context):
-    update.message.reply_text("/find_email - найти email-адреса в тексте;\n/find_phone_number - найти номера телефонов в тексте;\n/verify_password - проверить надежность пароля; ")
-
 def find_phone_number(update: Update, context):
     update.message.reply_text('Введите текст для поиска телефонных номеров')
     return 'find_phone_number_input'
@@ -294,7 +291,6 @@ def main():
     )
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", helpCommand))
     dp.add_handler(find_phone_number_handler)
     dp.add_handler(find_email_handler)
     dp.add_handler(checkPassHandler)
